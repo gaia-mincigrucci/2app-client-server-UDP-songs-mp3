@@ -12,47 +12,74 @@ public class MusicClient {
 
             InetAddress address = InetAddress.getByName(host);
 
-            // --- FASE 1: LOGIN SEPARATO ---
+            // ===== LOGIN =====
             System.out.println("=== ACCESSO AL SERVIZIO MUSICALE ===");
-            System.out.print("Inserisci il tuo username: ");
+            System.out.print("Username: ");
             String user = scanner.nextLine();
-            System.out.print("Inserisci la tua password: ");
+            System.out.print("Password: ");
             String pass = scanner.nextLine();
 
             String credentials = user + ":" + pass;
-            byte[] credBytes = credentials.getBytes();
-            socket.send(new DatagramPacket(credBytes, credBytes.length, address, port));
+            socket.send(new DatagramPacket(
+                    credentials.getBytes(),
+                    credentials.length(),
+                    address,
+                    port
+            ));
 
             byte[] buffer = new byte[1024];
             DatagramPacket resp = new DatagramPacket(buffer, buffer.length);
             socket.receive(resp);
-            System.out.println("\n[SERVER]: " + new String(resp.getData(), 0, resp.getLength()).trim());
 
-            // --- FASE 2: RICHIESTA BRANO ---
-            System.out.print("\nInserisci il titolo della canzone che vuoi scaricare: ");
+            System.out.println("[SERVER] " +
+                    new String(resp.getData(), 0, resp.getLength()));
+
+            // ===== RICHIESTA CANZONE =====
+            System.out.print("\nInserisci il titolo della canzone: ");
             String titolo = scanner.nextLine();
-            byte[] titoloBytes = titolo.getBytes();
-            socket.send(new DatagramPacket(titoloBytes, titoloBytes.length, address, port));
 
-            // --- FASE 3: RICEZIONE E SALVATAGGIO ---
+            socket.send(new DatagramPacket(
+                    titolo.getBytes(),
+                    titolo.length(),
+                    address,
+                    port
+            ));
+
+            // ===== RISPOSTA SERVER =====
             socket.receive(resp);
             String info = new String(resp.getData(), 0, resp.getLength()).trim();
 
-            // CORREZIONE QUI: mancavano le virgolette e la parentesi tonda
-            if (info.startsWith("FILE_OK")) {
-                System.out.println("Ricezione in corso... " + info);
+            if (info.startsWith("FILE:")) {
+                System.out.println("Download in corso...");
 
-                // Riceve i byte effettivi del file
-                DatagramPacket filePacket = new DatagramPacket(new byte[1024], 1024);
+                // Ricezione file
+                DatagramPacket filePacket =
+                        new DatagramPacket(new byte[1024], 1024);
                 socket.receive(filePacket);
 
-                // Salviamo il file nella cartella del progetto
-                FileOutputStream fos = new FileOutputStream("canzone_scaricata.mp3");
+                // ===== SALVATAGGIO SU PC (CARTELLA DOWNLOAD) =====
+                String userHome = System.getProperty("user.home");
+                File downloadDir = new File(userHome, "Downloads");
+
+                if (!downloadDir.exists()) {
+                    downloadDir.mkdirs();
+                }
+
+                File file = new File(downloadDir, titolo + ".mp3");
+
+                if (file.exists()) {
+                    System.out.println("ERRORE: Il file esiste già nei Download.");
+                    return;
+                }
+
+                FileOutputStream fos = new FileOutputStream(file);
                 fos.write(filePacket.getData(), 0, filePacket.getLength());
                 fos.close();
-                System.out.println("SUCCESS: Brano salvato come 'canzone_scaricata.mp3'");
+
+                System.out.println("SUCCESSO: File salvato in");
+                System.out.println(file.getAbsolutePath());
             } else {
-                System.out.println("[SERVER ERROR]: " + info);
+                System.out.println("[ERRORE SERVER] " + info);
             }
 
         } catch (IOException e) {
