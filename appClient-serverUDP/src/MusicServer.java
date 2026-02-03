@@ -1,45 +1,66 @@
 import java.io.*;
-import java.net.*;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 
 public class MusicServer {
+
     public static void main(String[] args) {
         int port = 9876;
+        // catalogo delle canzoni disponibili (modifica qui per aggiungere)
+        String[] catalogo = {"canzone.mp3", "test.mp3"};
 
         try (DatagramSocket socket = new DatagramSocket(port)) {
-            System.out.println("SERVER MUSICA in ascolto sulla porta " + port);
+            System.out.println("Music server UDP avviato sulla porta " + port);
+
+            byte[] receiveBuffer = new byte[1024];
 
             while (true) {
-                byte[] buffer = new byte[1024];
-                DatagramPacket packet =
-                        new DatagramPacket(buffer, buffer.length);
 
-                // ===== LOGIN =====
-                socket.receive(packet);
-                InetAddress clientAddr = packet.getAddress();
-                int clientPort = packet.getPort();
+                // ricezione login
+                DatagramPacket receivePacket =
+                        new DatagramPacket(receiveBuffer, receiveBuffer.length);
+                socket.receive(receivePacket);
 
-                String loginOK = "LOGIN OK";
+                InetAddress clientAddress = receivePacket.getAddress();
+                int clientPort = receivePacket.getPort();
+
+                System.out.println("richiesta login da " +
+                        clientAddress + ":" + clientPort);
+
+                String login =
+                        new String(receivePacket.getData(), 0, receivePacket.getLength());
+
+                // invia conferma login + lista canzoni disponibili
+                String lista = String.join(", ", catalogo);
+                String loginOK = "login effettuato\nBrani disponibili: " + lista;
+
                 socket.send(new DatagramPacket(
                         loginOK.getBytes(),
                         loginOK.length(),
-                        clientAddr,
+                        clientAddress,
                         clientPort
                 ));
 
-                // ===== RICHIESTA CANZONE =====
-                socket.receive(packet);
-                String titolo =
-                        new String(packet.getData(), 0, packet.getLength()).trim();
+                // ricezione richiesta canzone
+                receivePacket =
+                        new DatagramPacket(receiveBuffer, receiveBuffer.length);
+                socket.receive(receivePacket);
 
-                Canzone canzone = new Canzone(titolo);
-                File file = new File(canzone.getNomeFileCompleto());
+                // togliamo l'estensione .mp3 dalla richiesta se presente
+                String titolo = new String(receivePacket.getData(), 0, receivePacket.getLength()).trim();
+                if (titolo.endsWith(".mp3")) {
+                    titolo = titolo.substring(0, titolo.length() - 4);
+                }
+
+                File file = new File(titolo + ".mp3");
 
                 if (file.exists()) {
-                    String ok = "FILE:" + file.getName();
+                    String ok = "file ok";
                     socket.send(new DatagramPacket(
                             ok.getBytes(),
                             ok.length(),
-                            clientAddr,
+                            clientAddress,
                             clientPort
                     ));
 
@@ -50,20 +71,23 @@ public class MusicServer {
                     socket.send(new DatagramPacket(
                             fileBytes,
                             letti,
-                            clientAddr,
+                            clientAddress,
                             clientPort
                     ));
                     fis.close();
+
+                    System.out.println("file inviato: " + file.getName());
                 } else {
-                    String err = "ERRORE: BRANO NON TROVATO";
+                    String err = "errore: brano non trovato";
                     socket.send(new DatagramPacket(
                             err.getBytes(),
                             err.length(),
-                            clientAddr,
+                            clientAddress,
                             clientPort
                     ));
                 }
             }
+
         } catch (IOException e) {
             e.printStackTrace();
         }

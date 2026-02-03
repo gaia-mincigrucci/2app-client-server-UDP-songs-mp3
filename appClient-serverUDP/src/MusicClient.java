@@ -1,89 +1,89 @@
 import java.io.*;
-import java.net.*;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.util.Scanner;
 
 public class MusicClient {
+
     public static void main(String[] args) {
-        String host = "localhost";
+        String hostname = "localhost";
         int port = 9876;
 
         try (DatagramSocket socket = new DatagramSocket();
              Scanner scanner = new Scanner(System.in)) {
 
-            InetAddress address = InetAddress.getByName(host);
+            socket.setSoTimeout(5000);
+            InetAddress address = InetAddress.getByName(hostname);
 
-            // ===== LOGIN =====
-            System.out.println("=== ACCESSO AL SERVIZIO MUSICALE ===");
-            System.out.print("Username: ");
+            // login: invio username e password
+            System.out.print("Inserisci il tuo username: ");
             String user = scanner.nextLine();
-            System.out.print("Password: ");
+            System.out.print("Inserisci la tua password: ");
             String pass = scanner.nextLine();
 
-            String credentials = user + ":" + pass;
-            socket.send(new DatagramPacket(
-                    credentials.getBytes(),
-                    credentials.length(),
-                    address,
-                    port
-            ));
+            String login = user + ":" + pass;
+            byte[] sendBuffer = login.getBytes();
 
-            byte[] buffer = new byte[1024];
-            DatagramPacket resp = new DatagramPacket(buffer, buffer.length);
-            socket.receive(resp);
+            DatagramPacket packetToSend =
+                    new DatagramPacket(sendBuffer, sendBuffer.length, address, port);
+            socket.send(packetToSend);
 
-            System.out.println("[SERVER] " +
-                    new String(resp.getData(), 0, resp.getLength()));
+            // ricezione risposta login + lista canzoni
+            byte[] receiveBuffer = new byte[1024];
+            DatagramPacket packetReceived =
+                    new DatagramPacket(receiveBuffer, receiveBuffer.length);
 
-            // ===== RICHIESTA CANZONE =====
-            System.out.print("\nInserisci il titolo della canzone: ");
+            socket.receive(packetReceived);
+            String risposta = new String(packetReceived.getData(), 0, packetReceived.getLength());
+            System.out.println("server: " + risposta);
+
+            // visualizzo la lista canzoni estratta dal messaggio ricevuto (opzionale)
+            if (risposta.contains("Brani disponibili:")) {
+                String lista = risposta.substring(risposta.indexOf("Brani disponibili:") + 19);
+            }
+
+            // richiesta titolo canzone
+            System.out.print("Inserisci il titolo della canzone: ");
             String titolo = scanner.nextLine();
+            sendBuffer = titolo.getBytes();
 
-            socket.send(new DatagramPacket(
-                    titolo.getBytes(),
-                    titolo.length(),
-                    address,
-                    port
-            ));
+            packetToSend =
+                    new DatagramPacket(sendBuffer, sendBuffer.length, address, port);
+            socket.send(packetToSend);
 
-            // ===== RISPOSTA SERVER =====
-            socket.receive(resp);
-            String info = new String(resp.getData(), 0, resp.getLength()).trim();
+            // ricezione risposta server sul file
+            socket.receive(packetReceived);
+            String info =
+                    new String(packetReceived.getData(), 0, packetReceived.getLength());
 
-            if (info.startsWith("FILE:")) {
-                System.out.println("Download in corso...");
+            if (info.startsWith("file")) {
 
-                // Ricezione file
+                // ricezione file
                 DatagramPacket filePacket =
                         new DatagramPacket(new byte[1024], 1024);
                 socket.receive(filePacket);
 
-                // ===== SALVATAGGIO SU PC (CARTELLA DOWNLOAD) =====
+                // salvataggio file nella cartella downloads
                 String userHome = System.getProperty("user.home");
                 File downloadDir = new File(userHome, "Downloads");
-
-                if (!downloadDir.exists()) {
-                    downloadDir.mkdirs();
-                }
+                if (!downloadDir.exists()) downloadDir.mkdirs();
 
                 File file = new File(downloadDir, titolo + ".mp3");
-
-                if (file.exists()) {
-                    System.out.println("ERRORE: Il file esiste già nei Download.");
-                    return;
-                }
 
                 FileOutputStream fos = new FileOutputStream(file);
                 fos.write(filePacket.getData(), 0, filePacket.getLength());
                 fos.close();
 
-                System.out.println("SUCCESSO: File salvato in");
+                System.out.println("La canzone è stata scaricata in:");
                 System.out.println(file.getAbsolutePath());
+
             } else {
-                System.out.println("[ERRORE SERVER] " + info);
+                System.out.println("errore server: " + info);
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("errore o timeout: " + e.getMessage());
         }
     }
 }
